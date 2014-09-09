@@ -10,7 +10,7 @@ def apiCall(resource):
 
 	if response.status != 200:
 		connection.close()
-		raise Exception("API call failed")
+		raise Exception("API call failed:" + response.reason)
 
 	response_body = response.read()
 
