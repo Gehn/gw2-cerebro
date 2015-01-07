@@ -1,3 +1,4 @@
+import json
 import util
 import threading
 
@@ -84,31 +85,53 @@ class Market:
 		self.item_listings = {}
 
 
+	def clearCache(self):
+		self.item_listings = {}
+
+
 	#Inner function.  takes a raw list of listings to query for and returns the response.
-	def _getItemListingsByList(self, listing_list):
+	def _getListingsByList(self, listing_list):
+		# Figure out what is in the cache.
+		cached_listing_list = []
+		trimmed_listing_list = []
+		for listing in listing_list:
+			try:
+				if self.item_listings[listing] == None:
+					trimmed_listing_list.append(listing)
+				else:
+					cached_listing_list.append(listing)
+			except:
+				pass
+
+		#Populate from the cache.
+		listings_by_id_index = {}
+		for listing in cached_listing_list:
+			listings_by_id_index[listing] = self.item_listings[listing]
+
+		# Convert the uncached listing IDs to a query string and request it
+		listings_response = []
 		listing_string = ""
-		if len(listing_list) > 0:
-			for listing_id in listing_list:
+		if len(trimmed_listing_list) > 0:
+			for listing_id in trimmed_listing_list:
 				listing_string += str(listing_id) + ','
 	
 			listing_string = listing_string[:-1]
 	
-		api_string = '/v2/commerce/listings?ids=' + listing_string
-		listings_response = util.apiCall(api_string)
+			api_string = '/v2/commerce/listings?ids=' + listing_string
+			listings_response = util.apiCall(api_string)
 
-		listings_by_id_index = {}
+		#Parse the response.
 		for listings_by_id_dict in listings_response:
 			listings_by_id = ItemListing(listings_by_id_dict)
 			listings_by_id_index[listings_by_id._id] = listings_by_id
 
-			self.item_listings[listings_by_id._id] = listings_by_id
+			self.item_listings[int(listings_by_id._id)] = listings_by_id
 			
-
 		return listings_by_id_index
 
 
 
-	def getItemListings_out(self, listing_ids, out_dir):
+	def getListings_out(self, listing_ids, out_dir):
 		'''
 			Given an int/stringified int (or list of the above), returns a dir
 			of the listings corrosponding to those IDs
@@ -116,7 +139,7 @@ class Market:
 				:param listing_ids: An int/stringified int (or list) of the item listings desired.
 				:param out_dir: Simply pass a {} in, it will be populated with the results.
 		'''
-		BATCH_SIZE = 300
+		BATCH_SIZE = 200 #Can get pushed higher, but it gets iffy. FIXME: narrow down better.
 
 		# Does nastiness to allow many sorts of valid listing_ids types.
 		# e.g. int, stringified int, list of ints and list of stringified ints.
@@ -137,7 +160,7 @@ class Market:
 		while len(listing_list) != 0:
 			listing_batch = listing_list[:BATCH_SIZE]
 
-			index = self._getItemListingsByList(listing_batch)
+			index = self._getListingsByList(listing_batch)
 
 			listing_list = listing_list[BATCH_SIZE:]
 
@@ -145,21 +168,47 @@ class Market:
 				accumulated_index[key] = value
 
 				if out_dir != None:
-					#print "Adding:", key, " ", value
 					out_dir[key] = value
 
-		#print "Found:", len(accumulated_index)
 		return accumulated_index
 
 
-	def getItemListings(self, listing_ids):
+	def getListings(self, listing_ids):
 		'''
 			Given an int/stringified int (or list of the above), returns a dir
 			of the listings corrosponding to those IDs
 
 				:param listing_ids: An int/stringified int (or list) of the item listings desired.
 		'''
-		return self.getItemListings_out(listing_ids, None)
+		return self.getListings_out(listing_ids, None)
+
+
+	#Builds an index of ALL listings.  Be ready for a bit of a wait.
+	#TODO: Maybe try multiprocessing it? the overhead of starting the other interpreters probably isn't worth it.
+	def getAllListings(self, threaded=True):
+
+		listing_ids = self.getAllListingIDs()[:1000]
+		listing_index = {}
+
+		if threaded:
+			#Yes I know it can actually start THREADPOOL_SIZE+1 threads, hush.
+			THREADPOOL_SIZE=10
+			threadpool = []
+			for i in range(0, len(listing_ids), len(listing_ids) / THREADPOOL_SIZE):
+				thread = threading.Thread( target=self.getListings_out, kwargs={"listing_ids":listing_ids[i : ( i + len(listing_ids) / THREADPOOL_SIZE )], "out_dir":listing_index} )
+				thread.start()
+				threadpool.append(thread)
+			
+
+			for thread in threadpool:
+				thread.join()
+		
+		else:
+			listing_index = self.getListings(listing_ids)
+
+		return listing_index
+
+
 
 
 	def getAllListingIDs(self):
@@ -173,30 +222,4 @@ class Market:
 		return self.item_listings.keys()
 
 
-
-	#Builds an index of ALL listings.  Be ready for a bit of a wait.
-	#TODO: Maybe try multiprocessing it? the overhead of starting the other interpreters probably isn't worth it.
-	#TODO: Figure out why serial running doesn't work, but threaded does.  No idea what that's about.
-	def getAllListings(self, threaded=True):
-
-		listing_ids = self.getAllListingIDs()[:1000]
-		listing_index = {}
-
-		if threaded:
-			#Yes I know it can actually start THREADPOOL_SIZE+1 threads, hush.
-			THREADPOOL_SIZE=10
-			threadpool = []
-			for i in range(0, len(listing_ids), len(listing_ids) / THREADPOOL_SIZE):
-				thread = threading.Thread( target=self.getItemListings_out, kwargs={"listing_ids":listing_ids[i : ( i + len(listing_ids) / THREADPOOL_SIZE )], "out_dir":listing_index} )
-				thread.start()
-				threadpool.append(thread)
-			
-
-			for thread in threadpool:
-				thread.join()
-		
-		else:
-			listing_index = self.getItemListings(listing_ids[-1000:])
-
-		return listing_index
 
