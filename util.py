@@ -7,7 +7,7 @@ import threading
 def apiCall(resource):
 	found_resource = False #To deal with redirects
 	url = "api.guildwars2.com"
-	protocol = "http"
+	protocol = "https"
 	while not found_resource:
 		print "Getting: ", protocol, url, resource
 
@@ -78,7 +78,7 @@ def idListApiCall_out(resource, listing_ids, out_list = []):
 			:param listing_ids: An int/stringified int (or list) of the item listings desired.
 			:param out_list: Simply pass a [] in, it will be populated with the results.
 	'''
-	BATCH_SIZE = 200 #Can get pushed higher, but it gets iffy. FIXME: narrow down better.
+	BATCH_SIZE = 250 #Can get pushed higher, but it gets iffy. FIXME: narrow down better.
 
 	# Does nastiness to allow many sorts of valid listing_ids types.
 	# e.g. int, stringified int, list of ints and list of stringified ints.
@@ -142,7 +142,7 @@ def getAllIds(resource):
 	'''
 		Returns a list of all current listing ID's
 	'''
-	return apiCall(resource)
+	return apiCall(resource)[:1000]
 
 
 

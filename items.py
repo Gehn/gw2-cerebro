@@ -15,7 +15,7 @@ class Item:
 			pass
 
 
-class ItemIndex:
+class Items:
 	def __init__(self):
 		self.items = {}
 		self.name_index = {}
