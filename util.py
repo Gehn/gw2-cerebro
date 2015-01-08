@@ -146,3 +146,9 @@ def getAllIds(resource):
 
 
 
+
+def setAttrsFromDir(item, attr_dir):
+	for var, val in attr_dir.items():
+		setattr(item, var, val)
+
+
