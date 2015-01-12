@@ -4,13 +4,20 @@ import threading
 import util
 
 class Offer:
+	'''
+		Contains data on all offers at a given price point.
+	'''
 	def __init__(self, item_dir):
-		util.setAttrsFromDir(self, item_dir)
+		util._setAttrsFromDir(self, item_dir)
 
 
 class ItemListings:
+	'''
+		Contains all offer listings for a given item, as well as some data on them.
+		(mean_buy, min/max_by, buy_volume, and the same for sell)
+	'''
 	def __init__(self, item_dir = {}):
-		util.setAttrsFromDir(self, item_dir)
+		util._setAttrsFromDir(self, item_dir)
 		
 		self.buy_volume = 0
 		self.sell_volume = 0
@@ -74,23 +81,35 @@ class ItemListings:
 
 
 class Listings:
+	'''
+		Primary listings object, use this to query the listings API.
+	'''
 	def __init__(self):
 		self.listings = {}
 
 
 	def getAllListings(self):
+		'''
+			Populate this object with all existant listings.
+		'''
 		return self.getListings(util.getAllIds('/v2/commerce/listings'))
 
 
-	def getItemByName(self, name):
-		return self.name_index[name]
+	def getListingById(self, listing_id):
+		'''
+			Populate this object with the listings for a given ID
 
-
-	def getItemById(self, item_id):
-		return getItems([item_id])[0]
+				:param listing_id: the listing ID to query for.
+		'''
+		return self.getListings([listing_id])[0]
 
 
 	def getListings(self, listing_ids):
+		'''
+			Populate this object with the listings for a list of IDs
+
+				:param listing_ids: The list of IDs to query for.
+		'''
 		raw_listings = util.idListApiCall('/v2/commerce/listings?ids=', listing_ids)
 
 		for raw_listing in raw_listings:
@@ -100,6 +119,12 @@ class Listings:
 		
 
 	def _indexListing(self, listing_object):
+		'''
+			NOTE: INTERNAL FUNCTION.
+			Index a given listing object.
+
+				:param listing_object: the object to index.
+		'''
 		self.listings[listing_object.id] = listing_object
 
 

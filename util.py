@@ -1,15 +1,36 @@
-import httplib
+import http.client as httplib
 import json
-from urlparse import urlparse
+from urllib.parse import urlparse
 import threading
+import logging
+import sys
+import math
+import time
+import datetime
+
+formatter = logging.Formatter('%(levelname)s : %(asctime)s : %(message)s')
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(0)
+handler.setFormatter(formatter)
+logger = logging.getLogger()
+logger.setLevel(0)
+logger.addHandler(handler)
+
+logger.info('Logging enabled.')
 
 
 def apiCall(resource):
+	'''
+		Core API call to the api.guildwars2.com api. Simply makes an http
+		request and returns the un-jsonified response.
+
+			:param resource: the path (e.g. /v2/items) to query for.
+	'''
 	found_resource = False #To deal with redirects
 	url = "api.guildwars2.com"
 	protocol = "https"
 	while not found_resource:
-		print "Getting: ", protocol, url, resource
+		logger.debug("Getting: " + str(protocol) + str(url) + str(resource))
 
 		if protocol == "https":
 			connection = httplib.HTTPSConnection(url)
@@ -28,9 +49,9 @@ def apiCall(resource):
 			url = parsed_url.netloc
 			#resource = parsed_url.path FIXME: Determine if I should have this to some extent.
 			protocol = parsed_url.scheme
-			print "Redirecting to: ", protocol, url, resource
+			logger.debug("Redirecting to: " + str(protocol) + str(url) + str(resource))
 		elif response.status == 200:
-			print "Got response."
+			logger.debug("Got response.")
 			found_resource = True
 
 
@@ -38,91 +59,88 @@ def apiCall(resource):
 
 	connection.close()
 
-	return json.loads(response_body)
+	return json.loads(response_body.decode())
 
 
 
+def _idListApiCall(resource, id_list):
+	'''
+		NOTE: INTERNAL FUNCTION
+		Makes a call to the API appending a list of stringified values comma seperated.
 
-
-
-
-
-
-
-#Inner function.  takes a raw list of listings to query for and returns the response.
-def _idListApiCall(resource, listing_list):
+			:param resource: the path (e.g. /v2/items?ids=) to query for.
+			:param id_list: The list of ids to query for. 
+	'''
 	# Convert the listing IDs to a query string and request it
-	listings_response = []
-	listing_string = ""
-	if len(listing_list) > 0:
-		for listing_id in listing_list:
-			listing_string += str(listing_id) + ','
+	api_response = []
+	id_list_string = ""
+	if len(id_list) > 0:
+		for each_id in id_list:
+			id_list_string += str(each_id) + ','
 
-		listing_string = listing_string[:-1]
+		id_list_string = id_list_string[:-1]
 
-		api_string = resource + listing_string
-		listings_response = apiCall(api_string)
+		api_string = resource + id_list_string
+		api_response = apiCall(api_string)
 
-	return listings_response
-
-
+	return api_response
 
 
 
-
-def idListApiCall_out(resource, listing_ids, out_list = []):
+def idListApiCall_out(resource, id_list, out_list = []):
 	'''
 		Given an int/stringified int (or list of the above), returns a dir
 		of the listings corrosponding to those IDs
 		
-			:param listing_ids: An int/stringified int (or list) of the item listings desired.
+			:param resource: the path (e.g. /v2/items?ids=) to query for.
+			:param id_list: An int/stringified int (or list) of the item listings desired.
 			:param out_list: Simply pass a [] in, it will be populated with the results.
 	'''
-	BATCH_SIZE = 250 #Can get pushed higher, but it gets iffy. FIXME: narrow down better.
-
-	# Does nastiness to allow many sorts of valid listing_ids types.
+	BATCH_SIZE = 200 #Can get pushed higher, but it gets iffy.
+	# Does nastiness to allow many sorts of valid id_list types.
 	# e.g. int, stringified int, list of ints and list of stringified ints.
-	listing_id = None
-	listing_list = []
+	each_id = None
+	parsed_id_list = []
 	try:
 		#If it's an int we just cram it in the string
-		listing_id = int(listing_ids)
-		listing_list = [listing_id]
+		each_id = int(id_list)
+		parsed_id_list = [each_id]
 	except:
 		#If it's a list of ints we build a comma seperated list
-		for listing_id in listing_ids:
-			int(listing_id)
-			listing_list.append(listing_id)
+		for each_id in id_list:
+			int(each_id)
+			parsed_id_list.append(each_id)
 
 
-	while len(listing_list) != 0:
-		listing_batch = listing_list[:BATCH_SIZE]
+	while len(parsed_id_list) != 0:
+		id_list_batch = parsed_id_list[:BATCH_SIZE]
 
-		out_list += _idListApiCall(resource, listing_batch)
+		out_list += _idListApiCall(resource, id_list_batch)
 
-		listing_list = listing_list[BATCH_SIZE:]
+		parsed_id_list = parsed_id_list[BATCH_SIZE:]
 
 	return out_list
 
 
 #Builds an index of ALL listings.  Be ready for a bit of a wait.
 #TODO: Maybe try multiprocessing it? the overhead of starting the other interpreters probably isn't worth it.
-def idListApiCall(resource, listing_ids, threaded=True):
+def idListApiCall(resource, id_list, threaded=True):
 	'''
 		Given an int/stringified int (or list of the above), returns a dir
 		of the listings corrosponding to those IDs
 
-			: param resource: the base resource (e.g. /foo/bar?id= )to query with the ID list
-			:param listing_ids: An int/stringified int (or list) of the item listings desired.
+			:param resource: the path (e.g. /v2/items?ids=) to query for.
+			:param id_list: An int/stringified int (or list) of the item listings desired.
 	'''
-	listing_list = []
+	out_list = []
 
 	if threaded:
 		#Yes I know it can actually start THREADPOOL_SIZE+1 threads, hush.
 		THREADPOOL_SIZE=10
 		threadpool = []
-		for i in range(0, len(listing_ids), len(listing_ids) / THREADPOOL_SIZE):
-			thread = threading.Thread( target=idListApiCall_out, kwargs={"resource":resource, "listing_ids":listing_ids[i : ( i + len(listing_ids) / THREADPOOL_SIZE )], "out_list":listing_list} )
+		ids_per_thread = math.ceil(len(id_list) / THREADPOOL_SIZE)
+		for i in range(0, len(id_list), ids_per_thread):
+			thread = threading.Thread( target=idListApiCall_out, kwargs={"resource":resource, "id_list":id_list[i : math.ceil( i + len(id_list) / THREADPOOL_SIZE )], "out_list":out_list} )
 			thread.start()
 			threadpool.append(thread)
 		
@@ -131,9 +149,9 @@ def idListApiCall(resource, listing_ids, threaded=True):
 			thread.join()
 	
 	else:
-		listing_list = idListApiCall_out(listing_ids)
+		out_list = idListApiCall_out(id_list)
 
-	return listing_list
+	return out_list
 
 
 
@@ -142,13 +160,119 @@ def getAllIds(resource):
 	'''
 		Returns a list of all current listing ID's
 	'''
-	return apiCall(resource)[:1000]
+	return apiCall(resource)
 
 
 
 
-def setAttrsFromDir(item, attr_dir):
+def _setAttrsFromDir(item, attr_dir):
+	'''
+		NOTE: INTERNAL FUNCTION
+		Helper function for parsing an API response into a class automagically.
+	'''
 	for var, val in attr_dir.items():
 		setattr(item, var, val)
 
 
+
+def _determineMaxRequestBatchSize():
+	'''
+		NOTE: INTERNAL FUNCTION
+		Little helper function, tells you what the API limits you to in terms of ID's in a single request,
+		does so by binary search.  At last run, the number was 200.
+	'''
+	ids = getAllIds('/v2/items')
+
+	#Arbitrary start point; much higher than current limit.
+	#(But given a guess that the real number is 200+some; this should binary search the target nicely)
+	previous_batch_size = 1000
+	batch_size = 800
+	halt = False
+	while not halt:
+		tmp_batch_size = batch_size
+		try:
+			logger.debug("Trying batch size: " + str(batch_size))
+
+			_idListApiCall('/v2/items?ids=', ids[:batch_size])
+
+			if previous_batch_size < batch_size:
+				batch_size += (batch_size - previous_batch_size)
+			elif previous_batch_size > batch_size:
+				batch_size += (previous_batch_size - batch_size) / 2
+			else:
+				halt = True
+		except Exception as e:
+			logger.exception(e)
+
+			if previous_batch_size > batch_size:
+				batch_size -= (previous_batch_size - batch_size)
+			elif previous_batch_size < batch_size:
+				batch_size -= (batch_size - previous_batch_size) / 2
+			else:
+				batch_size -= 1
+
+			if batch_size <= 0:
+				halt = True
+
+		previous_batch_size = tmp_batch_size
+
+	return batch_size
+
+
+#TODO: variance as well?
+def _determineApiDataRefreshRate():
+	'''
+		NOTE: INTERNAL FUNCTION
+		Another strange helper, tries to determine some data about the rate at which API data is refreshing,
+		so that you can most find an optimal rate to query it without going overboard.  
+
+		NOTE2:
+		This may also tell us some interesting things about the rate at which data is moving, since pragmatically the refresh
+		rate has not been consistent; meaning it's likely some sort of push based system, perhaps on transaction
+		volume in the interim?  It would be interesting to experiment with, but I'm rambling.
+	'''
+	num_trials = 1000
+	trial_delay = 1
+
+	prev_sell_quantity = 0
+	prev_buy_quantity = 0
+	interval_start = None
+	discarded_first_interval = False #We may be coming in "halfway through"
+	intervals = []
+	max_interval = datetime.timedelta()
+	min_interval = datetime.timedelta(days=9999)
+	for i in range(0, num_trials):
+		time.sleep(trial_delay)
+
+		interval_end = datetime.datetime.now()
+		ret = apiCall("/v2/commerce/prices?ids=19697") # copper ore, it's always moving.
+		
+		sell_quantity = ret[0]["sells"]["quantity"]
+		buy_quantity = ret[0]["buys"]["quantity"]
+
+		if sell_quantity != prev_sell_quantity or buy_quantity != prev_buy_quantity:
+			#We need to get the first data first; going from start->first value doesn't count.
+			if interval_start:
+				#And even then; we still need to throw out our first "real" interval.
+				if discarded_first_interval:
+					interval = interval_end - interval_start
+					intervals.append(interval)
+					logger.debug("Found interval: " + str(interval) + " In trial: " + str(i))
+
+					if interval > max_interval:
+						logger.debug("Found new max interval")
+						max_interval = interval
+					if interval < min_interval:
+						logger.debug("Found new min interval")
+						min_interval = interval
+				else:
+					discarded_first_interval = True
+
+			prev_sell_quantity = sell_quantity
+			prev_buy_quantity = buy_quantity
+
+			interval_start = interval_end
+
+	average_interval = sum(intervals) / len(intervals)
+
+	return {"mean": average_interval, "min": min_interval, "max": max_interval}
