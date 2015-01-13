@@ -4,9 +4,14 @@ import datetime
 
 
 def logItemData(item, epsilon=30):
+	'''
+		This function indefinitely polls the API for a certain items listing data and logs it.
+
+			:param item: The item to gather data on
+			:param epsilon: The number of seconds between polls
+	'''
 	l = listings.Listings()
 	
-	#TODO: make a check to yell if get hasn't been run before a search has?
 	prev_time = datetime.datetime.now()
 	
 	# the number of seconds to trigger on.

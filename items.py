@@ -4,8 +4,12 @@ class ItemDetails:
 	'''
 		Item details, contains context specific information about the item.
 	'''
-	def __init__(self, item_dir):
+	def __init__(self, item_dir = {}):
+		self._dir = item_dir
 		util._setAttrsFromDir(self, item_dir)
+
+	def __str__(self):
+		return str(self._dir)
 
 
 class Item:
@@ -13,12 +17,16 @@ class Item:
 		Primary item object.  Contains data about the item, as well as a potential item.details metadata object.
 	'''
 	def __init__(self, item_dir = {}):
+		self._dir = item_dir
 		util._setAttrsFromDir(self, item_dir)
 		
 		try:
 			self.details = ItemDetails(self.details)
 		except AttributeError:
 			pass
+
+	def __str__(self):
+		return str(self._dir)
 
 
 class Items:
@@ -54,6 +62,7 @@ class Items:
 
 				:param search_terms: The terms to search for. (e.g. searchItemByName('tiny', 'snowflake'))
 		'''
+		#TODO: make a check to yell if get hasn't been run before a search has?
 		found_items = []
 		for name in self.name_index:
 			if all(search_term.lower() in name.lower() for search_term in search_terms):

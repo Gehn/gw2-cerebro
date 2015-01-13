@@ -2,28 +2,34 @@ import json
 import util
 import threading
 import util
+import sys
 
 class Offer:
 	'''
 		Contains data on all offers at a given price point.
 	'''
-	def __init__(self, item_dir):
-		util._setAttrsFromDir(self, item_dir)
+	def __init__(self, offer_dir = {}):
+		self._dir = offer_dir
+		util._setAttrsFromDir(self, offer_dir)
+
+	def __str__(self):
+		return str(self._dir)
 
 
 class ItemListings:
 	'''
 		Contains all offer listings for a given item, as well as some data on them.
-		(mean_buy, min/max_by, buy_volume, and the same for sell)
+		(mean_buy, max_buy, buy_volume, and the same for sell (except min->max))
 	'''
-	def __init__(self, item_dir = {}):
-		util._setAttrsFromDir(self, item_dir)
+	def __init__(self, listing_dir = {}):
+		self._dir = listing_dir
+		util._setAttrsFromDir(self, listing_dir)
 		
 		self.buy_volume = 0
 		self.sell_volume = 0
 
 		self.max_buy = 0
-		self.min_sell = 0
+		self.min_sell = 99999999
 
 		self.mean_buy = 0
 		self.median_buy = 0
@@ -78,6 +84,9 @@ class ItemListings:
 
 		#TODO: Calculate the medians.  remember that each listing has multiple quantity.
 
+
+	def __str__(self):
+		return str({"buy_volume":self.buy_volume, "sell_volume":self.sell_volume, "max_buy":self.max_buy, "mean_buy":self.mean_buy, "min_sell":self.min_sell, "mean_sell":self.mean_sell})
 
 
 class Listings:
