@@ -3,6 +3,7 @@ import util
 import threading
 import util
 import sys
+import time
 
 class Offer:
 	'''
@@ -89,12 +90,16 @@ class ItemListings:
 		return str({"buy_volume":self.buy_volume, "sell_volume":self.sell_volume, "max_buy":self.max_buy, "mean_buy":self.mean_buy, "min_sell":self.min_sell, "mean_sell":self.mean_sell})
 
 
+#TODO: MAKE CACHED VS UNCACHED VERSIONS.
 class Listings:
 	'''
 		Primary listings object, use this to query the listings API.
 	'''
 	def __init__(self):
 		self.listings = {}
+	
+		self.listing_cache_ttl = 30
+		self.listing_cache_last_refresh = 0
 
 
 	def getAllListings(self):
@@ -113,19 +118,38 @@ class Listings:
 		return self.getListings([listing_id])[0]
 
 
-	def getListings(self, listing_ids):
+	def getListingsById(self, listing_ids):
 		'''
 			Populate this object with the listings for a list of IDs
 
 				:param listing_ids: The list of IDs to query for.
 		'''
-		raw_listings = util.idListApiCall('/v2/commerce/listings?ids=', listing_ids)
+		# This section handles getting any cached entries, and pruning the query id list if so
+		current_time = time.time()
+		cached_results = []
+		if self.listing_cache_ttl < 0 or self.listing_cache_ttl > current_time - self.listing_cache_last_refresh:
+			cached_ids = [listing_id for listing_id in listing_ids if int(listing_id) in self.listings]
+			cached_results = [self.listings[int(listing_id)] for listing_id in cached_ids]
+			listing_ids = list(set(listing_ids) - set(cached_ids))
+		else:
+			self.listing_cache_last_refresh = time.time()
 
-		for raw_listing in raw_listings:
-			self._indexListing(ItemListings(raw_listing))
+		# This section gets any ids in the id list from the API.
+		if listing_ids:
+			raw_listings = util.idListApiCall('/v2/commerce/listings?ids=', listing_ids)
 
-		return [self.listings[int(listing_id)] for listing_id in listing_ids]
+			for raw_listing in raw_listings:
+				self._indexListing(ItemListings(raw_listing))
+
+		return cached_results + [self.listings[int(listing_id)] for listing_id in listing_ids]
+
 		
+	def getAllIds(self):
+		'''
+			Returns a list of all numerical listing IDs
+		'''
+		return util.getAllIds('/v2/commerce/listings')
+
 
 	def _indexListing(self, listing_object):
 		'''

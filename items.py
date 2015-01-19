@@ -1,4 +1,5 @@
 import util
+import time
 
 class ItemDetails:
 	'''
@@ -29,6 +30,7 @@ class Item:
 		return str(self._dir)
 
 
+#TODO: NEED to make cached vs uncached versions of the calls.
 class Items:
 	'''
 		Primary items object, use this to query the items API.
@@ -37,12 +39,15 @@ class Items:
 		self.items = {}
 		self.name_index = {}
 
+		self.item_cache_ttl = 30
+		self.item_cache_last_refresh = 0
+
 
 	def getAllItems(self):
 		'''
 			Populate this object with all existant listings.
 		'''
-		return self.getItems(util.getAllIds('/v2/items'))
+		return self.getItemsById(self.getAllIds())
 
 
 	def getItemByName(self, name):
@@ -77,22 +82,42 @@ class Items:
 
 				:param item_id: the item ID to query for.
 		'''
-		return self.getItems([item_id])[0]
+		return self.getItemsById([item_id])[0]
 
 
-	def getItems(self, item_ids):
+	def getItemsById(self, item_ids):
 		'''
 			Populate this object with the items for a list of IDs
 
 				:param item_ids: The list of IDs to query for.
 		'''
-		raw_items = util.idListApiCall('/v2/items?ids=', item_ids)
+		# This section handles getting any cached entries, and pruning the query id list if so
+		current_time = time.time()
+		cached_results = []
+		if self.item_cache_ttl < 0 or self.item_cache_ttl > current_time - self.item_cache_last_refresh:
+			cached_ids = [item_id for item_id in item_ids if int(item_id) in self.items]
+			cached_results = [self.items[int(item_id)] for item_id in cached_ids]
+			item_ids = list(set(item_ids) - set(cached_ids))
+		else:
+			self.item_cache_last_refresh = time.time()
 
-		for raw_item in raw_items:
-			self._indexItem(Item(raw_item))
+		# This gets any ids left in the item_ids list from the api.
+		if item_ids:
+			raw_items = util.idListApiCall('/v2/items?ids=', item_ids)
 
-		return [self.items[int(item_id)] for item_id in item_ids]
+			for raw_item in raw_items:
+				self._indexItem(Item(raw_item))
+
+		# We return both cached and uncached together
+		return cached_results + [self.items[int(item_id)] for item_id in item_ids]
 		
+
+	def getAllIds(self):
+		'''
+			Returns a list of all numerical item IDs
+		'''
+		return util.getAllIds('/v2/items')
+
 
 	def _indexItem(self, item_object):
 		'''
@@ -103,3 +128,5 @@ class Items:
 		'''
 		self.items[item_object.id] = item_object
 		self.name_index[item_object.name] = item_object
+
+		return item_object

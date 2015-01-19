@@ -7,6 +7,9 @@ import sys
 import math
 import time
 import datetime
+import base64
+import codecs
+import struct
 
 formatter = logging.Formatter('%(levelname)s : %(asctime)s : %(message)s')
 handler = logging.StreamHandler(sys.stdout)
@@ -124,7 +127,7 @@ def idListApiCall_out(resource, id_list, out_list = []):
 
 #Builds an index of ALL listings.  Be ready for a bit of a wait.
 #TODO: Maybe try multiprocessing it? the overhead of starting the other interpreters probably isn't worth it.
-def idListApiCall(resource, id_list, threaded=True):
+def idListApiCall(resource, id_list, threaded=True, cache_timeout=0):
 	'''
 		Given an int/stringified int (or list of the above), returns a dir
 		of the listings corrosponding to those IDs
@@ -149,7 +152,7 @@ def idListApiCall(resource, id_list, threaded=True):
 			thread.join()
 	
 	else:
-		out_list = idListApiCall_out(id_list)
+		out_list = idListApiCall_out(resource, id_list)
 
 	return out_list
 
@@ -163,6 +166,37 @@ def getAllIds(resource):
 	return apiCall(resource)
 
 
+def getSecretListings(item_api, listing_api):
+	'''
+		Get all items that have listings but no index in the public items API
+	'''
+	
+	item_ids = item_api.getAllIds()
+	listing_ids = listing_api.getAllIds()
+
+	return list(set(listing_ids) - set(item_ids))
+
+
+def makeItemCode(item_id, num_items=1):
+	'''
+		Generate ingame code from item ID.
+
+			:param item_id: the item_id to codify (in int or string form)
+			:param num_items: the number of items to simulate in the code.
+	'''
+	headers = struct.pack('<b', 2) + struct.pack('<b', num_items)
+	hex_item_id = struct.pack('<i', int(item_id))
+
+	return "[&" + base64.b64encode(headers + hex_item_id).decode('utf-8') + "]"
+
+
+def makeItemCodes(item_ids):
+	'''
+		Generate item codes from a list of IDs
+
+			:param item_ids: the list of ids to generate codes for.
+	'''
+	return [makeItemCode(item_id) for item_id in item_ids]
 
 
 def _setAttrsFromDir(item, attr_dir):
@@ -276,3 +310,7 @@ def _determineApiDataRefreshRate():
 	average_interval = sum(intervals) / len(intervals)
 
 	return {"mean": average_interval, "min": min_interval, "max": max_interval}
+
+
+if __name__ == "__main__":
+	print(getItemCode(29952))
