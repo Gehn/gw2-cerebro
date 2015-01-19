@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from util import logger
+import util
 
 class WatcherTrigger:
 	def __init__(self, \
@@ -262,8 +263,8 @@ class Watcher:
 
 				:param onChangeFunctions: A list of callable objects to call when a change is noticed. (must each take a data object)
 		'''
-		def getSecretListingsWrapper()
-			return getSecretListings(self.item_api, self.listing_api)
+		def getSecretListingsWrapper():
+			return util.getSecretListings(self.item_api, self.listing_api)
 
 		return self._watchForNewIds(getSecretListingsWrapper, onChangeFunctions)
 
@@ -307,16 +308,3 @@ if __name__ == "__main__":
 	w.watchForNewListings([p_l])
 	w.watchForNewSecretListings([p_s])
 
-	if "alert" in sys.argv:
-		def foundItemsCallback(new_items):
-			found_string = "\nFOUND ITEMS:\n"
-			for item in new_items:
-				found_string += str(item)
-			print(found_string)
-			with open("new_items.log", 'a') as f:
-				f.write(found_string)
-				
-		w.watchForNewItems([foundItemsCallback])
-	else:
-		while 1:
-			pass
