@@ -269,7 +269,6 @@ class Watcher:
 		return self._watchForNewIds(getSecretListingsWrapper, onChangeFunctions)
 
 
-	#TODO: am I sure I don't want them to take this as a meta-watcher context?
 	def halt(self):
 		for watcher_thread in self.watcher_threads:
 			watcher_thread.halt = True
@@ -278,7 +277,7 @@ class Watcher:
 	
 if __name__ == "__main__":
 
-	logger.setLevel(999)
+	logger.setLevel(0)
 
 	w = Watcher()
 
@@ -308,3 +307,5 @@ if __name__ == "__main__":
 	w.watchForNewListings([p_l])
 	w.watchForNewSecretListings([p_s])
 
+	while 1:
+		time.sleep(1)
