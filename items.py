@@ -39,15 +39,12 @@ class Items:
 		self.items = {}
 		self.name_index = {}
 
-		self.item_cache_ttl = 30
-		self.item_cache_last_refresh = 0
 
-
-	def getAllItems(self):
+	def getAllItems(self, use_cache=False):
 		'''
 			Populate this object with all existant listings.
 		'''
-		return self.getItemsById(self.getAllIds())
+		return self.getItemsById(self.getAllIds(), use_cache)
 
 
 	def getItemByName(self, name):
@@ -76,30 +73,27 @@ class Items:
 		return found_items
 
 
-	def getItemById(self, item_id):
+	def getItemById(self, item_id, use_cache=False):
 		'''
 			Populate this object with the item for a given ID
 
 				:param item_id: the item ID to query for.
 		'''
-		return self.getItemsById([item_id])[0]
+		return self.getItemsById([item_id], use_cache)[0]
 
 
-	def getItemsById(self, item_ids):
+	def getItemsById(self, item_ids, use_cache=False):
 		'''
 			Populate this object with the items for a list of IDs
 
 				:param item_ids: The list of IDs to query for.
 		'''
 		# This section handles getting any cached entries, and pruning the query id list if so
-		current_time = time.time()
 		cached_results = []
-		if self.item_cache_ttl < 0 or self.item_cache_ttl > current_time - self.item_cache_last_refresh:
+		if use_cache:
 			cached_ids = [item_id for item_id in item_ids if int(item_id) in self.items]
 			cached_results = [self.items[int(item_id)] for item_id in cached_ids]
 			item_ids = list(set(item_ids) - set(cached_ids))
-		else:
-			self.item_cache_last_refresh = time.time()
 
 		# This gets any ids left in the item_ids list from the api.
 		if item_ids:

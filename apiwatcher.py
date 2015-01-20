@@ -277,7 +277,7 @@ class Watcher:
 	
 if __name__ == "__main__":
 
-	logger.setLevel(0)
+	logger.setLevel(999)
 
 	w = Watcher()
 

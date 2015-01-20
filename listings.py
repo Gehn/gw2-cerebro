@@ -98,41 +98,35 @@ class Listings:
 	def __init__(self):
 		self.listings = {}
 	
-		self.listing_cache_ttl = 30
-		self.listing_cache_last_refresh = 0
 
-
-	def getAllListings(self):
+	def getAllListings(self, use_cache=False):
 		'''
 			Populate this object with all existant listings.
 		'''
-		return self.getListings(util.getAllIds('/v2/commerce/listings'))
+		return self.getListings(self.getAllIds(), use_cache)
 
 
-	def getListingById(self, listing_id):
+	def getListingById(self, listing_id, use_cache=False):
 		'''
 			Populate this object with the listings for a given ID
 
 				:param listing_id: the listing ID to query for.
 		'''
-		return self.getListings([listing_id])[0]
+		return self.getListings([listing_id], use_cache)[0]
 
 
-	def getListingsById(self, listing_ids):
+	def getListingsById(self, listing_ids, use_cache=False):
 		'''
 			Populate this object with the listings for a list of IDs
 
 				:param listing_ids: The list of IDs to query for.
 		'''
 		# This section handles getting any cached entries, and pruning the query id list if so
-		current_time = time.time()
 		cached_results = []
-		if self.listing_cache_ttl < 0 or self.listing_cache_ttl > current_time - self.listing_cache_last_refresh:
+		if use_cache:
 			cached_ids = [listing_id for listing_id in listing_ids if int(listing_id) in self.listings]
 			cached_results = [self.listings[int(listing_id)] for listing_id in cached_ids]
 			listing_ids = list(set(listing_ids) - set(cached_ids))
-		else:
-			self.listing_cache_last_refresh = time.time()
 
 		# This section gets any ids in the id list from the API.
 		if listing_ids:

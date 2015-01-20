@@ -16,9 +16,9 @@ class Database:
 
 		try:
 			#TODO: make the email get a unique constraint.
-			cursor.execute("CREATE TABLE new_item_watchers (email text)")
-			cursor.execute("CREATE TABLE new_listing_watchers (email text)")
-			cursor.execute("CREATE TABLE new_secret_listing_watchers (email text)")
+			cursor.execute("CREATE TABLE new_item_watchers (email text UNIQUE)")
+			cursor.execute("CREATE TABLE new_listing_watchers (email text UNIQUE)")
+			cursor.execute("CREATE TABLE new_secret_listing_watchers (email text UNIQUE)")
 		except sqlite3.OperationalError as e:
 			pass
 
@@ -27,13 +27,17 @@ class Database:
 
 
 	def addWatcherByTable(self, table, email):
-		connection = sqlite3.connect(self.db_file)
-		cursor = connection.cursor()
+		try:
+			connection = sqlite3.connect(self.db_file)
+			cursor = connection.cursor()
 
-		cursor.execute("INSERT INTO " + table + " VALUES (?)", (email,))
+			cursor.execute("INSERT INTO " + table + " VALUES (?)", (email,))
 
-		connection.commit()
-		connection.close()
+			connection.commit()
+			connection.close()
+		except sqlite3.IntegrityError as e:
+			return False
+		return True
 
 
 	def getWatchersByTable(self, table):
