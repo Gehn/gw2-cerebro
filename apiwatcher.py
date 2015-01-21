@@ -34,9 +34,13 @@ class WatcherTrigger:
 		self.buy_volume_ceiling = buy_volume_ceiling
 		self.buy_volume_floor = buy_volume_floor
 
+		self._run_override = None
 
 	def run(self, context):
-		item_listings = context.listing_api.getListingsById(self.item_ids)
+		if self._run_override:
+			return self._run_override(self, context)
+
+		item_listings = context.listing_api.getListingsById(self.item_ids, use_cache=True)
 
 		if self.run_interval:
 			curr_time = time.time()
@@ -65,6 +69,50 @@ class WatcherTrigger:
 		return self.run(context)
 
 
+	def overrideRunWith(self, function):
+		'''
+			Call another function instead of the builtin run.  Must take (trigger, context),
+			and return [] on non trigger, [populated] on success.
+
+				:param function: the function to run instead of the builtin run
+		'''
+		self._run_override = function
+
+
+class WatcherTriggerBatch:
+	def __init__(self, triggers, callbacks):
+		self.triggers = triggers
+		self.callbacks = callbacks
+
+	def run(self, context):
+		data = self.runTriggers(context)
+		if data:
+			self.runCallbacks(data)
+
+	def runTriggers(self, context):
+		ret = []
+		for trigger in self.triggers:
+			try:
+				ret += trigger(context)
+			except Exception as e:
+				logger.exception(e)
+
+		return ret
+
+	def runCallbacks(self, data):
+		'''
+			Runs each of the functions declared as callbacks (to run when the target triggers them)
+			passing the data parameter as a single argument.
+
+				:param data: any arbitrary data to pass to the callbacks.
+		'''
+		for callback in self.callbacks:
+			try:
+				callback(data)
+			except Exception as e:
+				logger.exception(e)
+
+
 class WatcherThread:
 	'''
 		This is the mysterious "context" object that gets passed around to everything.  It is simply
@@ -72,7 +120,7 @@ class WatcherThread:
 		for any data that callable might need, including what should happen if the event being
 		watched for occurs.
 	'''
-	def __init__(self, target, waiters = [], item_api = None, listing_api = None):
+	def __init__(self, trigger_batches = [], item_api = None, listing_api = None):
 		'''
 			Initialize the thread.
 
@@ -88,41 +136,42 @@ class WatcherThread:
 		if not listing_api:
 			listing_api = listings.Listings()
 
+		self.trigger_batches = trigger_batches
 		self.item_api = item_api
 		self.listing_api = listing_api
 
 		self.halt = False
 
 		self._thread = None
-		self._target = target
-		self._waiters = waiters
 
 
 	def start(self):
 		'''
 			Start the thread's activity.
 		'''
-		# Saw no reason to do it like real threading with a seperate run method, at least for now.
-		_thread = threading.Thread(None, self._target, args=(self,))
+		_thread = threading.Thread(None, self.run)
 		_thread.start()
 
 
-	#TODO: I wonder if waiters are better tied to triggers as callbacks.
-	def runWaiters(self, data):
+	def run(self):
 		'''
-			Runs each of the functions declared as waiters (to run when the target triggers them)
-			passing the data parameter as a single argument.
-
-				:param data: any arbitrary data to pass to the waiters.
+			The run action of the thread, wraps _target
 		'''
-		for waiter in self._waiters:
-			try:
-				waiter(data)
-			except Exception as e:
-				logger.exception(e)
+		prev_time = time.time()
+
+		while not self.halt:
+			current_time = time.time()
+			delta = (current_time - prev_time)
+			
+			if delta >= self.poll_interval:
+				prev_time = current_time
+				
+				for trigger_batch in self.trigger_batches:
+					trigger_batch.run(self)
+			else:
+				time.sleep(int(self.poll_interval - delta))
 
 
-	#TODO: this may be able to be pulled entirely out of this. (Unless I put the timed retrying stuff in here, which may be smarter)
 	def setPollInterval(self, new_poll_interval):
 		'''
 			Set the interval (in seconds) that this watcher should poll at.
@@ -142,13 +191,12 @@ class Watcher:
 		self.listing_api = listings.Listings()
 
 
-	def _createWatcherThread(self, target, waiters=None, item_api = None, listing_api = None):
+	def _createWatcherThread(self, trigger_batches, item_api = None, listing_api = None):
 		'''
 			Internal function.  Creates a single watcher thread objects with the specified
 			parameters and returns it, after starting it.
 
-				:param target: The target callable object to run within the thread. (must take a context object)
-				:param waiters: A list of callable objects to be run if the watcher triggers them. (must each take a data object)
+				:param trigger_batches: The list of trigger batches to watch.
 				:param item_api: an instance of the items api to utilize.
 				:param listing_api: an instance of the listings api to utilize.
 		'''
@@ -157,12 +205,12 @@ class Watcher:
 		if not listing_api:
 			listing_api = self.listing_api
 
-		new_watcher_thread = WatcherThread(target, waiters, item_api, listing_api)
+		new_watcher_thread = WatcherThread(trigger_batches, item_api, listing_api)
 		new_watcher_thread.setPollInterval(self.default_poll_interval)
 		self.watcher_threads.append(new_watcher_thread)
 		new_watcher_thread.start()
 
-		return target
+		return new_watcher_thread
 
 
 	def setDefaultPollInterval(self, new_default_poll_interval):
@@ -177,29 +225,8 @@ class Watcher:
 		pass #TODO: Implement or deprecate.
 
 
-	def batchWatchListings(self, trigger_callback_tuple_list):
-		def pollTriggers(context):
-			while not context.halt:
-				try_again_interval = None
-				for triggers, callbacks in trigger_callback_tuple_list:
-					data = []
-					for trigger in triggers:
-						data += trigger(context)
-
-						if trigger.run_interval != None and (try_again_interval == None or trigger.run_interval < try_again_interval):
-							try_again_interval = trigger.run_interval
-
-					if data != []:
-						for callback in callbacks:
-							callback(data)
-
-				if try_again_interval == None:
-					try_again_interval = context.poll_interval
-
-				time.sleep(try_again_interval)
-
-
-		new_watcher_thread = self._createWatcherThread(pollTriggers)
+	def batchWatchListings(self, trigger_batch):
+		new_watcher_thread = self._createWatcherThread([trigger_batch])
 		return new_watcher_thread
 
 
@@ -210,32 +237,26 @@ class Watcher:
 				:param id_query: A callable object that returns a list which can be set-diffed against later iterations of itself.
 				:param onChangeFunctions: A list of callable objects to call when a change is noticed. (must each take a data object)
 		'''
-		#TODO: this might be a good place of where to override the trigger run routine, and use triggers everywhere.
-		def watchForNewItemsLoop(context):
-			all_ids = id_query()
+		# TODO: if you allow for an arbitrary  "diff" pluggable function inside the trigger,
+		# this can be way more encapsulated.
+		def watchForNewItems(trigger, context):
+			if "all_ids" not in dir(trigger):
+				trigger.all_ids = id_query()
+			else:
+				new_all_ids = id_query()
 
-			prev_time = time.time()
+				if set(trigger.all_ids) != set(new_all_ids):
+					print("found distinct sets: " + str(len(trigger.all_ids)) + "," + str(len(new_all_ids)))
+					ret = list(set(new_all_ids) - set(trigger.all_ids))
+					trigger.all_ids = new_all_ids
+					return ret
+			return []
 
-			while not context.halt:
-				current_time = time.time()
-				delta = (current_time - prev_time)
-			
-				if delta >= context.poll_interval:
-					prev_time = current_time
+		trigger = WatcherTrigger()
+		trigger.overrideRunWith(watchForNewItems)
+		trigger_batch = WatcherTriggerBatch([trigger], onChangeFunctions)
 
-					new_all_ids = id_query()
-
-					if set(all_ids) != set(new_all_ids):
-						print("found distinct sets: " + str(len(all_ids)) + "," + str(len(new_all_ids)))
-						context.runWaiters(set(new_all_ids) - set(all_ids))
-
-						all_ids = new_all_ids
-				else:
-					time.sleep(int(context.poll_interval - delta))
-
-
-		#TODO: can maybe turn this bit into a decorator?
-		new_watcher_thread = self._createWatcherThread(watchForNewItemsLoop, onChangeFunctions)
+		new_watcher_thread = self._createWatcherThread([trigger_batch])
 		return new_watcher_thread
 
 
@@ -277,7 +298,8 @@ class Watcher:
 	
 if __name__ == "__main__":
 
-	logger.setLevel(999)
+	#logger.setLevel(999)
+	logger.setLevel(0)
 
 	w = Watcher()
 
