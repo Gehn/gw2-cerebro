@@ -1,3 +1,5 @@
+import collections
+defaultdict = collections.defaultdict
 import json
 import util
 import threading
@@ -39,6 +41,8 @@ class ItemListings:
 		self.mean_sell = 0
 		self.median_sell = 0
 		self.mode_sell = 0
+
+		self.margin = 0
 
 		buy_objects = []
 		#enumerate buys.
@@ -85,6 +89,11 @@ class ItemListings:
 
 		#TODO: Calculate the medians.  remember that each listing has multiple quantity.
 
+		#Calculate the margin.
+		delta = self.min_sell - self.max_buy
+		fee = (self.min_sell - 1) * .15
+		self.margin = (delta - fee) / (self.max_buy + 1)
+
 
 	def __str__(self):
 		return str({"buy_volume":self.buy_volume, "sell_volume":self.sell_volume, "max_buy":self.max_buy, "mean_buy":self.mean_buy, "min_sell":self.min_sell, "mean_sell":self.mean_sell})
@@ -95,15 +104,18 @@ class Listings:
 	'''
 		Primary listings object, use this to query the listings API.
 	'''
-	def __init__(self):
+	def __init__(self, listings=[]):
 		self.listings = {}
 	
+		for listing in listings:
+			self._indexListing(listing)
+
 
 	def getAllListings(self, use_cache=False):
 		'''
 			Populate this object with all existant listings.
 		'''
-		return self.getListings(self.getAllIds(), use_cache)
+		return self.getListingsById(self.getAllIds(), use_cache)
 
 
 	def getListingById(self, listing_id, use_cache=False):
@@ -112,7 +124,7 @@ class Listings:
 
 				:param listing_id: the listing ID to query for.
 		'''
-		return self.getListings([listing_id], use_cache)[0]
+		return self.getListingsById([listing_id], use_cache)[0]
 
 
 	def getListingsById(self, listing_ids, use_cache=False):
@@ -135,7 +147,7 @@ class Listings:
 			for raw_listing in raw_listings:
 				self._indexListing(ItemListings(raw_listing))
 
-		return cached_results + [self.listings[int(listing_id)] for listing_id in listing_ids]
+		return cached_results + [self.listings[int(listing_id)] for listing_id in listing_ids if int(listing_id) in self.listings]
 
 		
 	def getAllIds(self):
@@ -155,3 +167,60 @@ class Listings:
 		self.listings[listing_object.id] = listing_object
 
 
+	#FIXME: fix the util funtion then use it under this.
+	def getApproximateItemVolatility(self, item_ids, delay=10):
+		'''
+			NOTE: this is a concept; only works on certain items with high enough volatility.
+			To be rewritten and deprecated.
+
+			Query multiple times to observe how volume changes and return
+			a metric for volatility derived from this. 
+
+				:param item_ids: List of item ids to query. (also accepts single id)
+				:param delay: delay between each query.
+		'''
+
+		if item_ids.__class__ != [].__class__:
+			item_ids = [item_ids]
+
+		def inner_defaultdict():
+			return defaultdict(int)
+
+		volatility_map = defaultdict(inner_defaultdict) #id:{net_buy, net_sell, abs_buy, abs_sell}
+		iterations = 30
+
+		listings = {listing.id:listing for listing in self.getListingsById(item_ids)}
+		for iteration in range(0, iterations):
+			time.sleep(delay)
+			new_listings = {listing.id:listing for listing in self.getListingsById(item_ids)}
+			for listing_id, listing in listings.items():
+				new_listing = new_listings[listing_id]
+				buy_delta = listing.buy_volume - new_listing.buy_volume
+				sell_delta = listing.sell_volume - new_listing.sell_volume
+
+				volatility_map[listing_id]["net_buy"] += buy_delta
+				volatility_map[listing_id]["net_sell"] += sell_delta
+				volatility_map[listing_id]["abs_buy"] += abs(buy_delta)
+				volatility_map[listing_id]["abs_sell"] += abs(sell_delta)
+
+		for data in volatility_map.values():
+			for name, metric in data.items():
+				data[name] = metric / iterations
+
+
+		return volatility_map
+
+	def searchListingsByLambda(self, listing_filter):
+		'''
+			Query all listings by a certain filter, a callable that takes the listing as an argument,
+			returns true if it should accept the listing, false if not.
+
+				:param listing_filter: callable taking one argument of the listing object to be examined, returns boolean.
+		'''
+		found_listings = []
+		for listing in self.listings.values():
+			if listing_filter(listing):
+				found_listings.append(listing)
+
+		return found_listings
+				

@@ -46,6 +46,7 @@ def apiCall(resource):
 
 		if response.status >= 400:
 			connection.close()
+			logger.error("API call failed: " + response.reason + " ; " + str(response.status))
 			raise Exception("API call failed: " + response.reason + " ; " + str(response.status))
 		elif response.status == 302:
 			parsed_url = urlparse(response.getheader('location'))
@@ -53,9 +54,11 @@ def apiCall(resource):
 			#resource = parsed_url.path FIXME: Determine if I should have this to some extent.
 			protocol = parsed_url.scheme
 			logger.debug("Redirecting to: " + str(protocol) + str(url) + str(resource))
-		elif response.status == 200:
+		elif 200 <= response.status < 300 :
 			logger.debug("Got response.")
 			found_resource = True
+		else:
+			logger.error("Unspecified response: " + str(response.status))
 
 
 	response_body = response.read()
@@ -254,7 +257,7 @@ def _determineMaxRequestBatchSize():
 
 
 #TODO: variance as well?
-def _determineApiDataRefreshRate():
+def _determineApiDataRefreshRate(sample_id=19697): 
 	'''
 		NOTE: INTERNAL FUNCTION
 		Another strange helper, tries to determine some data about the rate at which API data is refreshing,
@@ -264,6 +267,8 @@ def _determineApiDataRefreshRate():
 		This may also tell us some interesting things about the rate at which data is moving, since pragmatically the refresh
 		rate has not been consistent; meaning it's likely some sort of push based system, perhaps on transaction
 		volume in the interim?  It would be interesting to experiment with, but I'm rambling.
+
+			:param sample_id: What item should be polled.  Copper ore used as an index by default because yes.
 	'''
 	num_trials = 1000
 	trial_delay = 1
@@ -279,7 +284,7 @@ def _determineApiDataRefreshRate():
 		time.sleep(trial_delay)
 
 		interval_end = datetime.datetime.now()
-		ret = apiCall("/v2/commerce/prices?ids=19697") # copper ore, it's always moving.
+		ret = apiCall("/v2/commerce/prices?ids=" + str(sample_id)) # copper ore, it's always moving.
 		
 		sell_quantity = ret[0]["sells"]["quantity"]
 		buy_quantity = ret[0]["buys"]["quantity"]
@@ -307,10 +312,55 @@ def _determineApiDataRefreshRate():
 
 			interval_start = interval_end
 
-	average_interval = sum(intervals) / len(intervals)
+	print(intervals)
+	total_delta = datetime.timedelta(0,0,0)
+	for interval in intervals:
+		total_delta += interval
+	if len(intervals) > 0:
+		average_interval = total_delta / len(intervals)
 
 	return {"mean": average_interval, "min": min_interval, "max": max_interval}
 
 
+def zipItemsAndListings(items, listings):
+	'''
+		Associate the items and listings sharing IDs in a {uid:{item:item,listing:listing}} datastructure.
+		Only adds to the zipped list if present in both lists.
+
+			:param items: the list of items to zip.
+			:param listings: the list of listings to zip.
+	'''
+	listing_map = {listing.id:listing for listing in listings}
+
+	results = {}
+	for item in items:
+		if item.id in listing_map:
+			listing = listing_map[item.id]
+			results[item.name + '.' + str(item.id)] = {"item":item, "listing":listing}
+
+	return results
+
+
+def zipObjectsByField(iterable_a, iterable_b, field):
+	'''
+		More generic object zipper.  Takes two iterables and zips the contents
+		along a single field.
+		They must not be of the same length, only objects which have a zipped
+		partner are returned.
+
+			:param iterable_a: The first iterable of objects
+			:param iterable_b: The second iterable of objects
+			:param field: The field to zip on
+	'''
+	zipped_map = []
+
+	field_index = {getattr(item, field):item for item in iterable_a}
+
+	for item in iterable_b:
+		if getattr(item, field) in field_index:
+			joined_item = field_index[getattr(item, field)]
+			zipped_map[iterable_a] = iterable_b
+
+	return zipped_map
 if __name__ == "__main__":
 	print(getItemCode(29952))

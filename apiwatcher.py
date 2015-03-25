@@ -10,7 +10,14 @@ import time
 from util import logger
 import util
 
+#FIXME: I really hate this whole stack.  could be implemented way more elegently.  
+#WatcherTrigger should just also be watcherTriggerBatch, and it should take lambdas as in the query language.
+#(this is what I was doing hackily with _run_override)
 class WatcherTrigger:
+	'''
+		A single trigger.  Examines the current state of the world via multiple potential
+		activators, and returns any relevent data if the activator trigger. (e.g. timer, threshold.)
+	'''
 	def __init__(self, \
 			item_ids=[], \
 			run_interval=None, \
@@ -19,7 +26,22 @@ class WatcherTrigger:
 			sell_volume_ceiling=None, \
 			sell_volume_floor=None, \
 			buy_volume_ceiling=None, \
-			buy_volume_floor=None):
+			buy_volume_floor=None,
+			override_trigger=None):
+		'''
+			Initialize a new trigger.  Specify the various potential triggers. (all arguments optional)
+
+				:param item_ids: The item ids to utilize alongside the builtin triggers
+				:param run_interval: The optional time to trigger on in seconds
+				:param buy_ceiling: If buy price exceeds this, trigger.
+				:param sell_floor: If sell falls below this, trigger.
+				:param sell_volume_ceiling: If sell volume goes above this, trigger.
+				:param sell_volume_floor: If sell volume goes below this, trigger.
+				:param buy_volume_ceiling: If buy volume goes above this, trigger.
+				:param buy_volume_floor: If buy volume goes below this, trigger.
+				:param override_trigger: Call another function instead of the builtin run.  
+					Must take (trigger, context), and return [] on non trigger, [populated] on success.
+		'''
 
 		self.item_ids = item_ids
 
@@ -34,9 +56,15 @@ class WatcherTrigger:
 		self.buy_volume_ceiling = buy_volume_ceiling
 		self.buy_volume_floor = buy_volume_floor
 
-		self._run_override = None
+		self._run_override = override_trigger
 
 	def run(self, context):
+		'''
+			The logic of a single listing watcher trigger.  Examines if it should trigger
+			due to a timeout or a custom set of thresholds or a custom lambda. (override)
+
+				:param context: The watcher thread object running this trigger.
+		'''
 		if self._run_override:
 			return self._run_override(self, context)
 
@@ -66,6 +94,11 @@ class WatcherTrigger:
 
 
 	def __call__(self, context):
+		'''
+			Calls run.
+
+				:param context: The watcher thread that this trigger is running within.
+		'''
 		return self.run(context)
 
 
@@ -80,16 +113,30 @@ class WatcherTrigger:
 
 
 class WatcherTriggerBatch:
+	'''
+		Group an arbitrary number of callbacks to be called by data from an arbitrary number of triggers.
+	'''
 	def __init__(self, triggers, callbacks):
 		self.triggers = triggers
 		self.callbacks = callbacks
 
 	def run(self, context):
+		'''
+			Run this batch; examining the triggers and running the callbacks on them if any data
+			is worth triggering on.
+
+				:param context: The watcher thread object running this batch.
+		'''
 		data = self.runTriggers(context)
 		if data:
 			self.runCallbacks(data)
 
 	def runTriggers(self, context):
+		'''
+			Run all triggers with the watcher thread object they are run within passed as context.
+
+				:param context: The watcher thread object running this batch.
+		'''
 		ret = []
 		for trigger in self.triggers:
 			try:
@@ -221,11 +268,12 @@ class Watcher:
 		self.default_poll_interval = new_default_poll_interval
 
 
-	def watchListings(self, trigger, callback):
-		pass #TODO: Implement or deprecate.
-
-
 	def batchWatchListings(self, trigger_batch):
+		'''
+			Enable watching a new batch of triggers.
+	
+				:param trigger_batch: The trigger batch to watch.
+		'''
 		new_watcher_thread = self._createWatcherThread([trigger_batch])
 		return new_watcher_thread
 
@@ -291,6 +339,9 @@ class Watcher:
 
 
 	def halt(self):
+		'''
+			Halt the watcher thread.
+		'''
 		for watcher_thread in self.watcher_threads:
 			watcher_thread.halt = True
 
@@ -313,17 +364,30 @@ if __name__ == "__main__":
 	#t = WatcherTrigger(item_ids=[555], run_interval=30)
 	#w.batchWatchListings([([t], [print])])
 
+	def convertData(data_list):
+		return "".join(util.makeItemCodes(data_list))
+
 	def p_l(data):
+		with open("apiwatcher.log", 'a') as f:
+			f.write("LISTINGS:")
+			f.write(convertData(data))
+
 		print("LISTINGS:")
-		print(data)
+		print(convertData(data))
 
 	def p_i(data):
+		with open("apiwatcher.log", 'a') as f:
+			f.write("Items:")
+			f.write(convertData(data))
 		print("Items:")
-		print(data)
+		print(convertData(data))
 
 	def p_s(data):
+		with open("apiwatcher.log", 'a') as f:
+			f.write("Secrets:")
+			f.write(convertData(data))
 		print("Secrets:")
-		print(data)
+		print(convertData(data))
 
 	w.watchForNewItems([p_i])
 	w.watchForNewListings([p_l])

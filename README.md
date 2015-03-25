@@ -20,3 +20,7 @@ The primary functionality for the items API is in the items module.  The Items c
 The primary functionality for the listings API is in the listings module.  The Listings class is of primary interest.  ( import listings; help(items.Listings) )
 
 See example.py for a demo program that collects data on a single item indefinitely.  
+
+
+There is additional functionality to run daemons that watch various components of the market.
+See apiwatcher.py for more details. (Additional documentation to come as the structure stabilizes)

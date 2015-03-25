@@ -35,9 +35,12 @@ class Items:
 	'''
 		Primary items object, use this to query the items API.
 	'''
-	def __init__(self):
+	def __init__(self, items = []):
 		self.items = {}
 		self.name_index = {}
+
+		for item in items:
+			self._indexItem(item)
 
 
 	def getAllItems(self, use_cache=False):
@@ -56,21 +59,6 @@ class Items:
 				:param item_id: the item ID to query for.
 		'''
 		return self.name_index[name]
-
-
-	def searchItemsByName(self, *search_terms):
-		'''
-			Get all items that contain the case insensitive terms given as arguments.
-
-				:param search_terms: The terms to search for. (e.g. searchItemByName('tiny', 'snowflake'))
-		'''
-		#TODO: make a check to yell if get hasn't been run before a search has?
-		found_items = []
-		for name in self.name_index:
-			if all(search_term.lower() in name.lower() for search_term in search_terms):
-				found_items.append(self.name_index[name])
-		
-		return found_items
 
 
 	def getItemById(self, item_id, use_cache=False):
@@ -103,7 +91,7 @@ class Items:
 				self._indexItem(Item(raw_item))
 
 		# We return both cached and uncached together
-		return cached_results + [self.items[int(item_id)] for item_id in item_ids]
+		return cached_results + [self.items[int(item_id)] for item_id in item_ids if int(item_id) in self.items]
 		
 
 	def getAllIds(self):
@@ -124,3 +112,43 @@ class Items:
 		self.name_index[item_object.name] = item_object
 
 		return item_object
+
+		
+	def searchItemsByName(self, *search_terms):
+		'''
+			Get all items that contain the case insensitive terms given as arguments.
+
+				:param search_terms: The terms to search for. (e.g. searchItemByName('tiny', 'snowflake'))
+		'''
+		#TODO: make a check to yell if get hasn't been run before a search has?
+		return self.searchItemsByField('name', *search_terms)
+
+
+	def searchItemsByField(self, field, *search_terms):
+		'''
+			Get all items that contain the case insensitive terms given as arguments within a generic field.
+
+				:param search_terms: The terms to search for. (e.g. searchItemByField('name', 'tiny', 'snowflake'))
+		'''
+		found_items = []
+		for item in self.items.values():
+			if all(search_term.lower() in getattr(item, field).lower() for search_term in search_terms):
+				found_items.append(item)
+
+		return found_items
+
+
+	def searchItemsByLambda(self, item_filter):
+		'''
+			Query all items by a certain filter, a callable that takes the item as an argument,
+			returns true if it should accept the item, false if not.
+
+				:param item_filter: callable taking one argument of the item object to be examined, returns boolean.
+		'''
+		found_items = []
+		for item in self.items.values():
+			if item_filter(item):
+				found_items.append(item)
+
+		return found_items
+
