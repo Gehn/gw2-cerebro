@@ -44,6 +44,8 @@ class ItemListings:
 
 		self.margin = 0
 
+		self.volume_margin = 0
+
 		buy_objects = []
 		#enumerate buys.
 		for raw_buy in self.buys:
@@ -93,6 +95,11 @@ class ItemListings:
 		delta = self.min_sell - self.max_buy
 		fee = (self.min_sell - 1) * .15
 		self.margin = (delta - fee) / (self.max_buy + 1)
+
+		#Calculate volume margin
+		self.volume_margin = float("inf")
+		if self.sell_volume:		
+			self.volume_margin =  self.buy_volume / self.sell_volume 
 
 
 	def __str__(self):

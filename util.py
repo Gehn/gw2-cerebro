@@ -30,9 +30,10 @@ def apiCall(resource):
 			:param resource: the path (e.g. /v2/items) to query for.
 	'''
 	found_resource = False #To deal with redirects
+	parsed_response = False #To deal with invalid responses.
 	url = "api.guildwars2.com"
 	protocol = "https"
-	while not found_resource:
+	while not found_resource and not parsed_response:
 		logger.debug("Getting: " + str(protocol) + str(url) + str(resource))
 
 		if protocol == "https":
@@ -61,11 +62,18 @@ def apiCall(resource):
 			logger.error("Unspecified response: " + str(response.status))
 
 
-	response_body = response.read()
+		response_body = response.read()
+		try:
+			data = json.loads(response_body.decode())
+			parsed_response = True
+		except Exception as e: #Known to be value error; but that came out of nowhere, so being a bit generous here.
+			logger.error("Json parsing failure for " + str(resource) + " : " + str(e))
+			parsed_response = False
+
 
 	connection.close()
 
-	return json.loads(response_body.decode())
+	return data
 
 
 
