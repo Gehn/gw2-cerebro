@@ -9,6 +9,7 @@ import threading
 import time
 from util import logger
 import util
+import json
 
 #FIXME: I really hate this whole stack.  could be implemented way more elegently.  
 #WatcherTrigger should just also be watcherTriggerBatch, and it should take lambdas as in the query language.
@@ -161,6 +162,8 @@ class WatcherTriggerBatch:
 
 
 class WatcherThread:
+	#TODO: seems like bad form to use the thread object as a context object, but defining a second
+	# context object just to be a container of data seems like overkill.  
 	'''
 		This is the mysterious "context" object that gets passed around to everything.  It is simply
 		a bucket for a thread running the callable at the heart of the watcher, as well as being a bucket
@@ -227,15 +230,20 @@ class WatcherThread:
 
 
 class Watcher:
-	def __init__(self):
+	def __init__(self, item_api=None, listing_api=None):
 		'''
 			Initialize the watcher controller.  From here you can create new watch tasks.
 		'''
 		self.default_poll_interval = 30
 		self.watcher_threads = []
 
-		self.item_api = items.Items()
-		self.listing_api = listings.Listings()
+		self.item_api = item_api
+		if item_api == None:
+			self.item_api = items.Items()
+
+		self.listing_api = listing_api
+		if listing_api == None:
+			self.listing_api = listings.Listings()
 
 
 	def _createWatcherThread(self, trigger_batches, item_api = None, listing_api = None):
@@ -352,7 +360,8 @@ if __name__ == "__main__":
 	#logger.setLevel(999)
 	logger.setLevel(0)
 
-	w = Watcher()
+	item_api = items.Items()
+	w = Watcher(item_api)
 
 	def handler(signal, frame):
 		print('halting.')
@@ -365,29 +374,28 @@ if __name__ == "__main__":
 	#w.batchWatchListings([([t], [print])])
 
 	def convertData(data_list):
-		return "".join(util.makeItemCodes(data_list))
+		return [{"name":item_api.getItemById(item_id).name, \
+				"id":item_id, \
+				"code":util.makeItemCode(item_id)} \
+			 for item_id in data_list]
 
 	def p_l(data):
+		data_str = json.dumps({"listings":convertData(data)}) + '\n'
 		with open("apiwatcher.log", 'a') as f:
-			f.write("LISTINGS:")
-			f.write(convertData(data))
-
-		print("LISTINGS:")
-		print(convertData(data))
+			f.write(data_str)
+		print(data_str)
 
 	def p_i(data):
+		data_str = json.dumps({"items":convertData(data)}) + '\n'
 		with open("apiwatcher.log", 'a') as f:
-			f.write("Items:")
-			f.write(convertData(data))
-		print("Items:")
-		print(convertData(data))
+			f.write(data_str)
+		print(data_str)
 
 	def p_s(data):
+		data_str = json.dumps({"secrets":convertData(data)}) + '\n'
 		with open("apiwatcher.log", 'a') as f:
-			f.write("Secrets:")
-			f.write(convertData(data))
-		print("Secrets:")
-		print(convertData(data))
+			f.write(data_str)
+		print(data_str)
 
 	w.watchForNewItems([p_i])
 	w.watchForNewListings([p_l])

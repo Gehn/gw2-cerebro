@@ -108,8 +108,14 @@ class Items:
 
 				:param item_object: the object to index.
 		'''
-		self.items[item_object.id] = item_object
-		self.name_index[item_object.name] = item_object
+		try:
+			id = item_object.id
+			name = item_object.name
+			self.items[id] = item_object
+			self.name_index[name] = item_object
+		except AttributeException as e:
+			pass
+			
 
 		return item_object
 

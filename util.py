@@ -10,6 +10,7 @@ import datetime
 import base64
 import codecs
 import struct
+import time
 
 formatter = logging.Formatter('%(levelname)s : %(asctime)s : %(message)s')
 handler = logging.StreamHandler(sys.stdout)
@@ -31,8 +32,14 @@ def apiCall(resource):
 	'''
 	found_resource = False #To deal with redirects
 	parsed_response = False #To deal with invalid responses.
+
+	retries = 0 # How many retries have we gone through thus far.
+	retry_threshold = 5 # For transient errors
+	retry_delay = 1 # Seconds
+
 	url = "api.guildwars2.com"
 	protocol = "https"
+
 	while not found_resource and not parsed_response:
 		logger.debug("Getting: " + str(protocol) + str(url) + str(resource))
 
@@ -45,7 +52,12 @@ def apiCall(resource):
 
 		response = connection.getresponse()
 
-		if response.status >= 400:
+		if response.status >= 500 and retries < retry_threshold:
+			logger.error("Retrying due to potentially transient API failure: " + response.reason + " ; " + str(response.status))
+			retries += 1
+			time.sleep(retry_delay)
+			continue
+		elif response.status >= 400:
 			connection.close()
 			logger.error("API call failed: " + response.reason + " ; " + str(response.status))
 			raise Exception("API call failed: " + response.reason + " ; " + str(response.status))
@@ -55,6 +67,7 @@ def apiCall(resource):
 			#resource = parsed_url.path FIXME: Determine if I should have this to some extent.
 			protocol = parsed_url.scheme
 			logger.debug("Redirecting to: " + str(protocol) + str(url) + str(resource))
+			continue
 		elif 200 <= response.status < 300 :
 			logger.debug("Got response.")
 			found_resource = True
